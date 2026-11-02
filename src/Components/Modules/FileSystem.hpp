@@ -112,10 +112,13 @@ namespace Components
     static bool FileWrapper_Rotate(const char* ospath);
     static bool FileRotate(const std::string& filename);
 
+    static bool UseDevDir();
+
   private:
     static std::mutex Mutex;
     static std::recursive_mutex FSMutex;
     static Utils::Memory::Allocator MemAllocator;
+    static const Game::dvar_t* fs_usedevdir;
 
     static int ReadFile(const char* path, char** buffer);
     static char* AllocateFile(int size);
@@ -125,6 +128,10 @@ namespace Components
 
     static void RegisterFolders();
     static void StartupStub();
+    static void RegisterUseDevDir();
+    static bool IsDevDirectory(const char* dir);
+    static bool ShouldAddLocalizedGameDirectory(const char* dir);
+    static void AddLocalizedGameDirectoryStub();
     static int Cmd_Exec_f_Stub(const char* s0, const char* s1);
 
     static void FsStartupSync(const char* a1);

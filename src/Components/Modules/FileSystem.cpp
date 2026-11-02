@@ -1,4 +1,5 @@
 #include "FileSystem.hpp"
+#include "Events.hpp"
 
 namespace Components
 {
@@ -9,6 +10,7 @@ namespace Components
   std::mutex FileSystem::Mutex;
   std::recursive_mutex FileSystem::FSMutex;
   Utils::Memory::Allocator FileSystem::MemAllocator;
+  const Game::dvar_t* FileSystem::fs_usedevdir = nullptr;
 
   void FileSystem::File::read(Game::FsThread thread)
   {
@@ -265,6 +267,55 @@ namespace Components
     RegisterFolder("userraw");
   }
 
+  void FileSystem::RegisterUseDevDir()
+  {
+    if (!fs_usedevdir)
+    {
+      fs_usedevdir = Game::Dvar_RegisterBool("fs_usedevdir", false, Game::DVAR_INIT, "Use development directories.");
+    }
+  }
+
+  bool FileSystem::UseDevDir()
+  {
+    return fs_usedevdir && fs_usedevdir->current.enabled;
+  }
+
+  bool FileSystem::IsDevDirectory(const char* dir)
+  {
+    return dir && (!_stricmp(dir, "raw")
+      || !_stricmp(dir, "raw_shared")
+      || !_stricmp(dir, "devraw")
+      || !_stricmp(dir, "devraw_shared"));
+  }
+
+  bool FileSystem::ShouldAddLocalizedGameDirectory(const char* dir)
+  {
+    return !IsDevDirectory(dir) || UseDevDir();
+  }
+
+  __declspec(naked) void FileSystem::AddLocalizedGameDirectoryStub()
+  {
+    __asm
+    {
+      pushad
+      push eax
+      call FileSystem::ShouldAddLocalizedGameDirectory
+      add esp, 4
+      test al, al
+      popad
+      jz skip
+
+      mov esi, 0Eh
+      push 642EF9h
+      retn
+
+    skip:
+      pop edi
+      pop esi
+      retn
+    }
+  }
+
   __declspec(naked) void FileSystem::StartupStub()
   {
     __asm
@@ -298,6 +349,8 @@ namespace Components
   void FileSystem::FsStartupSync(const char* a1)
   {
     std::lock_guard _(FSMutex);
+    RegisterUseDevDir();
+    Utils::Hook::Call<void(const char*)>(0x4C92E0)("fs_usedevdir"); // Com_StartupVariable
     return Utils::Hook::Call<void(const char*)>(0x4823A0)(a1); // FS_Startup
   }
 
@@ -586,6 +639,11 @@ namespace Components
 
     // Register additional folders
     Utils::Hook(0x482647, StartupStub, HOOK_JUMP).install()->quick();
+
+    // Only mount raw/devraw when fs_usedevdir is set (+set fs_usedevdir 1)
+    Utils::Hook(0x642EF4, AddLocalizedGameDirectoryStub, HOOK_JUMP).install()->quick();
+
+    Events::OnDvarInit(RegisterUseDevDir);
 
     // exec whitelist removal
     Utils::Hook::Nop(0x609685, 5);
